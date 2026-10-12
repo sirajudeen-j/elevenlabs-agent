@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from database import get_order, init_db, insert_order, next_order_id
+
 app = FastAPI(title="NovaMart Mock Backend")
 
 app.add_middleware(
@@ -14,8 +16,7 @@ app.add_middleware(
 )
 
 
-with open("orders.json", "r") as file:
-    ORDERS = json.load(file)
+init_db()
 
 
 class OrderLookupRequest(BaseModel):
@@ -24,7 +25,7 @@ class OrderLookupRequest(BaseModel):
 
 @app.post("/api/lookup_order")
 def lookup_order(request: OrderLookupRequest):
-    order = ORDERS.get(request.order_id)
+    order = get_order(request.order_id)
 
     if not order:
         return {
@@ -107,9 +108,8 @@ class CreateOrderRequest(BaseModel):
 
 @app.post("/api/create_order")
 def create_order(request: CreateOrderRequest):
-    # Generate order ID
-    order_id = str(len(ORDERS) + 1).zfill(5)
-    
+    order_id = next_order_id()
+
     # Calculate expected delivery (3 days from now)
     from datetime import timedelta
     expected_delivery = (datetime.utcnow() + timedelta(days=3)).strftime("%Y-%m-%d")
@@ -136,13 +136,9 @@ def create_order(request: CreateOrderRequest):
         "customer_email": request.customer_email
     }
     
-    # Save to memory
-    ORDERS[order_id] = new_order
-    
-    # Persist to orders.json
-    with open("orders.json", "w") as file:
-        json.dump(ORDERS, file, indent=2)
-    
+    # Persist to SQLite
+    insert_order(new_order)
+
     return {
         "success": True,
         "order_id": order_id,
