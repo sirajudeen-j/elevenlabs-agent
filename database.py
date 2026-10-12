@@ -115,3 +115,21 @@ def insert_order(order: dict):
             json.dumps(order["items"]),
         ),
     )
+
+
+def list_orders():
+    rows = _execute("SELECT * FROM orders ORDER BY created_at DESC, order_id DESC")
+    for row in rows:
+        row["items"] = json.loads(row["items"])
+    return rows
+
+
+def update_order_address(order_id: str, new_address: str) -> bool:
+    """Update the shipping address. Returns False if the order doesn't exist."""
+    if get_order(order_id) is None:
+        return False
+    _execute(
+        "UPDATE orders SET shipping_address = ? WHERE order_id = ?",
+        (new_address, order_id),
+    )
+    return True

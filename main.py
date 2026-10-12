@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from database import get_order, init_db, insert_order, next_order_id
+from database import get_order, init_db, insert_order, list_orders, next_order_id, update_order_address
 
 app = FastAPI(title="NovaMart Mock Backend")
 
@@ -71,6 +71,13 @@ class UpdateShippingAddressRequest(BaseModel):
 
 @app.post("/api/update_shipping_address")
 def update_shipping_address(request: UpdateShippingAddressRequest):
+    if not update_order_address(request.order_id, request.new_address):
+        return {
+            "success": False,
+            "error": "order_not_found",
+            "order_id": request.order_id
+        }
+
     return {
         "success": True,
         "order_id": request.order_id,
@@ -81,13 +88,18 @@ def update_shipping_address(request: UpdateShippingAddressRequest):
 
 # Products catalog
 PRODUCTS = [
-    {"id": "p1", "name": "Nova Headphones X1", "price": 149.0, "image": "/images/headphones.jpg", "description": "Wireless noise-canceling headphones", "category": "Audio"},
-    {"id": "p2", "name": "Nova Smart Speaker Mini", "price": 79.0, "image": "/images/speaker.jpg", "description": "Compact smart speaker with voice control", "category": "Smart Home"},
-    {"id": "p3", "name": "Nova Smart Plug", "price": 24.0, "image": "/images/plug.jpg", "description": "WiFi-enabled smart plug", "category": "Smart Home"},
-    {"id": "p4", "name": "Nova Earbuds Pro", "price": 129.0, "image": "/images/earbuds.jpg", "description": "True wireless earbuds with ANC", "category": "Audio"},
-    {"id": "p5", "name": "Nova Security Cam", "price": 99.0, "image": "/images/cam.jpg", "description": "1080p indoor security camera", "category": "Security"},
-    {"id": "p6", "name": "Nova Thermostat", "price": 199.0, "image": "/images/thermostat.jpg", "description": "Smart learning thermostat", "category": "Smart Home"},
+    {"id": "p1", "name": "Nova Headphones X1", "price": 149.0, "image": "https://picsum.photos/id/1015/600/600", "description": "Wireless noise-canceling headphones", "category": "Audio"},
+    {"id": "p2", "name": "Nova Smart Speaker Mini", "price": 79.0, "image": "https://picsum.photos/id/160/600/600", "description": "Compact smart speaker with voice control", "category": "Smart Home"},
+    {"id": "p3", "name": "Nova Smart Plug", "price": 24.0, "image": "https://picsum.photos/id/201/600/600", "description": "WiFi-enabled smart plug", "category": "Smart Home"},
+    {"id": "p4", "name": "Nova Earbuds Pro", "price": 129.0, "image": "https://picsum.photos/id/180/600/600", "description": "True wireless earbuds with ANC", "category": "Audio"},
+    {"id": "p5", "name": "Nova Security Cam", "price": 99.0, "image": "https://picsum.photos/id/251/600/600", "description": "1080p indoor security camera", "category": "Security"},
+    {"id": "p6", "name": "Nova Thermostat", "price": 199.0, "image": "https://picsum.photos/id/106/600/600", "description": "Smart learning thermostat", "category": "Smart Home"},
 ]
+
+
+@app.get("/api/orders")
+def get_orders():
+    return list_orders()
 
 
 @app.get("/api/products")
