@@ -1,19 +1,49 @@
 import json
 import os
-import sqlite3
 
-DB_PATH = "novamart.db"
+TURSO_URL = os.environ.get("TURSO_DATABASE_URL")
+TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
+
+# Local file DB. On Vercel (read-only FS) fall back to /tmp (ephemeral).
+if os.environ.get("VERCEL"):
+    DB_PATH = "/tmp/novamart.db"
+else:
+    DB_PATH = os.environ.get("SQLITE_PATH", "novamart.db")
+
+_client = None
 
 
-def get_connection():
+def _get_turso_client():
+    global _client
+    if _client is None:
+        import libsql_client
+
+        _client = libsql_client.create_client_sync(TURSO_URL, auth_token=TURSO_TOKEN)
+    return _client
+
+
+def _execute(sql, params=()):
+    """Run a query and return rows as a list of dicts."""
+    if TURSO_URL:
+        result = _get_turso_client().execute(sql, list(params))
+        cols = list(result.columns)
+        return [dict(zip(cols, row)) for row in result.rows]
+
+    import sqlite3
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        cur = conn.execute(sql, params)
+        rows = [dict(r) for r in cur.fetchall()]
+        conn.commit()
+        return rows
+    finally:
+        conn.close()
 
 
 def init_db():
-    conn = get_connection()
-    conn.execute(
+    _execute(
         """
         CREATE TABLE IF NOT EXISTS orders (
             order_id TEXT PRIMARY KEY,
@@ -27,15 +57,14 @@ def init_db():
         )
         """
     )
-    conn.commit()
 
     # Seed from orders.json if the table is empty
-    count = conn.execute("SELECT COUNT(*) AS c FROM orders").fetchone()["c"]
+    count = _execute("SELECT COUNT(*) AS c FROM orders")[0]["c"]
     if count == 0 and os.path.exists("orders.json"):
         with open("orders.json", "r") as f:
             seed = json.load(f)
         for order_id, order in seed.items():
-            conn.execute(
+            _execute(
                 """
                 INSERT OR IGNORE INTO orders
                 (order_id, status, expected_delivery_date, shipping_address,
@@ -52,47 +81,24 @@ def init_db():
                     json.dumps(order.get("items", [])),
                 ),
             )
-        conn.commit()
-
-    conn.close()
-
-
-def row_to_order(row):
-    if not row:
-        return None
-    return {
-        "order_id": row["order_id"],
-        "status": row["status"],
-        "expected_delivery_date": row["expected_delivery_date"],
-        "shipping_address": row["shipping_address"],
-        "fulfillment_center": row["fulfillment_center"],
-        "customer_email": row["customer_email"],
-        "items": json.loads(row["items"]),
-        "created_at": row["created_at"],
-    }
 
 
 def get_order(order_id: str):
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM orders WHERE order_id = ?", (order_id,)
-    ).fetchone()
-    conn.close()
-    return row_to_order(row)
+    rows = _execute("SELECT * FROM orders WHERE order_id = ?", (order_id,))
+    if not rows:
+        return None
+    row = rows[0]
+    row["items"] = json.loads(row["items"])
+    return row
 
 
 def next_order_id() -> str:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT MAX(CAST(order_id AS INTEGER)) AS m FROM orders"
-    ).fetchone()
-    conn.close()
+    row = _execute("SELECT MAX(CAST(order_id AS INTEGER)) AS m FROM orders")[0]
     return str((row["m"] or 10000) + 1)
 
 
 def insert_order(order: dict):
-    conn = get_connection()
-    conn.execute(
+    _execute(
         """
         INSERT INTO orders
         (order_id, status, expected_delivery_date, shipping_address,
@@ -109,5 +115,3 @@ def insert_order(order: dict):
             json.dumps(order["items"]),
         ),
     )
-    conn.commit()
-    conn.close()
