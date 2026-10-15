@@ -1,0 +1,338 @@
+openapi: 3.1.0
+info:
+  title: NovaMart Mock Backend API
+  version: 1.0.0
+  description: >-
+    API for the NovaMart demo storefront, order management, identity verification,
+    and shipping-address updates. This specification reflects the current implementation.
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+paths:
+  /api/lookup_order:
+    post:
+      operationId: lookupOrder
+      summary: Look up an order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderLookupRequest'
+            example:
+              order_id: ORD-1001
+      responses:
+        '200':
+          description: Order details, or a not-found result.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Order'
+                  - $ref: '#/components/schemas/OrderNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/verify_identity:
+    post:
+      operationId: verifyIdentity
+      summary: Verify a customer identity
+      description: Current demo implementation compares against two hardcoded account/postcode pairs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyIdentityRequest'
+            examples:
+              validCustomer:
+                value:
+                  account_number: '10000001'
+                  postcode: '94107'
+      responses:
+        '200':
+          description: Verification result.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/IdentityVerified'
+                  - $ref: '#/components/schemas/IdentityRejected'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/update_shipping_address:
+    post:
+      operationId: updateShippingAddress
+      summary: Update an order shipping address
+      description: >-
+        The account_number field is accepted but is not checked against order ownership
+        by the current implementation. Do not rely on it as authorization.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateShippingAddressRequest'
+            example:
+              account_number: '10000001'
+              order_id: ORD-1001
+              new_address: 123 Market Street, San Francisco, CA 94107
+      responses:
+        '200':
+          description: Address update result. A missing order is currently returned with HTTP 200.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ShippingAddressUpdated'
+                  - $ref: '#/components/schemas/OrderNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/products:
+    get:
+      operationId: getProducts
+      summary: List catalog products
+      responses:
+        '200':
+          description: Product catalog.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+  /api/orders:
+    get:
+      operationId: getOrders
+      summary: List orders
+      responses:
+        '200':
+          description: Orders currently stored by the backend.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+  /api/create_order:
+    post:
+      operationId: createOrder
+      summary: Create an order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+            example:
+              items:
+                - product_id: p1
+                  quantity: 1
+              customer_email: customer@example.com
+              shipping_address: 123 Market Street, San Francisco, CA 94107
+      responses:
+        '200':
+          description: Order created and persisted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateOrderResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+components:
+  schemas:
+    OrderLookupRequest:
+      type: object
+      required: [order_id]
+      properties:
+        order_id:
+          type: string
+          example: ORD-1001
+    VerifyIdentityRequest:
+      type: object
+      required: [account_number, postcode]
+      properties:
+        account_number:
+          type: string
+          example: '10000001'
+        postcode:
+          type: string
+          example: '94107'
+    UpdateShippingAddressRequest:
+      type: object
+      required: [account_number, order_id, new_address]
+      properties:
+        account_number:
+          type: string
+          description: Accepted but not currently used to verify order ownership.
+          example: '10000001'
+        order_id:
+          type: string
+          example: ORD-1001
+        new_address:
+          type: string
+          example: 123 Market Street, San Francisco, CA 94107
+    CartItem:
+      type: object
+      required: [product_id, quantity]
+      properties:
+        product_id:
+          type: string
+          example: p1
+        quantity:
+          type: integer
+          example: 1
+    CreateOrderRequest:
+      type: object
+      required: [items, customer_email, shipping_address]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItem'
+        customer_email:
+          type: string
+          format: email
+          example: customer@example.com
+        shipping_address:
+          type: string
+          example: 123 Market Street, San Francisco, CA 94107
+    Product:
+      type: object
+      required: [id, name, price, image, description, category]
+      properties:
+        id:
+          type: string
+          example: p1
+        name:
+          type: string
+          example: Nova Headphones X1
+        price:
+          type: number
+          format: float
+          example: 149.0
+        image:
+          type: string
+          format: uri
+          example: https://picsum.photos/id/1015/600/600
+        description:
+          type: string
+          example: Wireless noise-canceling headphones
+        category:
+          type: string
+          example: Audio
+    OrderItem:
+      type: object
+      required: [name, price, qty]
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+        qty:
+          type: integer
+    Order:
+      type: object
+      description: Order record. Additional fields may be returned by the database layer.
+      properties:
+        order_id:
+          type: string
+        expected_delivery_date:
+          type: string
+          format: date
+        shipping_address:
+          type: string
+        fulfillment_center:
+          type: string
+          example: FC-WEST-03
+        status:
+          type: string
+          example: processing
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        customer_email:
+          type: string
+          format: email
+    OrderNotFound:
+      type: object
+      properties:
+        status:
+          type: string
+          const: not_found
+        success:
+          type: boolean
+          const: false
+        error:
+          type: string
+          const: order_not_found
+        order_id:
+          type: string
+      description: The shape varies by endpoint: lookup uses status; update uses success and error.
+    IdentityVerified:
+      type: object
+      required: [success, customer_name, account_number]
+      properties:
+        success:
+          type: boolean
+          const: true
+        customer_name:
+          type: string
+          example: Jordan Rivera
+        account_number:
+          type: string
+          example: '10000001'
+    IdentityRejected:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          const: false
+    ShippingAddressUpdated:
+      type: object
+      required: [success, order_id, new_address, updated_at]
+      properties:
+        success:
+          type: boolean
+          const: true
+        order_id:
+          type: string
+        new_address:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    CreateOrderResponse:
+      type: object
+      required: [success, order_id, order]
+      properties:
+        success:
+          type: boolean
+          const: true
+        order_id:
+          type: string
+        order:
+          $ref: '#/components/schemas/Order'
+    ValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items: {}
+              msg:
+                type: string
+              type:
+                type: string
+  responses:
+    ValidationError:
+      description: Request body failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
